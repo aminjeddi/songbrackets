@@ -112,16 +112,16 @@ function clearAncestors(rounds: Slot[][], level: number, idx: number) {
 
 function Landing({ onPick }: { onPick: (name: string) => void }) {
   return (
-    <div className="flex-1 flex items-center justify-center px-5 py-12">
-      <div className="w-full max-w-md space-y-10 text-center fade-up">
+    <div className="flex-1 flex items-center justify-center px-5 py-10">
+      <div className="w-full max-w-3xl space-y-10 text-center fade-up">
         <h1 className="text-2xl tracking-tight">songbrackets.xyz</h1>
-        <div className="flex flex-col gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
           {ARTISTS.map((a, i) => (
             <button
               key={a.name}
               onClick={() => onPick(a.name)}
-              style={{ animationDelay: `${i * 50}ms` }}
-              className="card clickable card-enter rounded-xl border-2 border-black px-4 py-3 text-sm"
+              style={{ animationDelay: `${i * 35}ms` }}
+              className="card clickable card-enter rounded-xl border-2 border-black px-3 py-3 text-sm leading-tight"
             >
               {a.name}
             </button>
