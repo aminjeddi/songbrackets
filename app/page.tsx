@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { seedOrder, roundName } from "./lib/bracket";
 import { ARTISTS, getArtist } from "./lib/data";
+import { playPick, playSoft, playWin } from "./lib/sounds";
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
@@ -31,6 +32,7 @@ export default function Page() {
   function start(name: string) {
     const a = getArtist(name);
     if (!a) return;
+    playSoft();
     const songs: Song[] = a.songs.map((title, i) => ({
       title: cleanTitle(title),
       seed: i + 1,
@@ -47,6 +49,11 @@ export default function Page() {
   }
 
   function pick(level: number, parentIdx: number, winner: Song) {
+    playPick();
+    if (level + 1 === TOTAL_ROUNDS && parentIdx === 0) {
+      // Champion just decided — chase the pick tick with a brief two-note rise.
+      setTimeout(playWin, 90);
+    }
     setRounds((prev) => {
       const next = prev.map((row) => row.slice());
       const replaced = next[level + 1][parentIdx];
@@ -59,12 +66,14 @@ export default function Page() {
   }
 
   function reset() {
+    playSoft();
     setPhase("landing");
     setArtist("");
     setRounds([]);
   }
 
   function shuffle() {
+    playSoft();
     setRounds((prev) => {
       if (prev.length === 0) return prev;
       const leaves = prev[0].slice();
@@ -125,7 +134,7 @@ function clearAncestors(rounds: Slot[][], level: number, idx: number) {
 
 function Landing({ onPick }: { onPick: (name: string) => void }) {
   return (
-    <div className="flex-1 flex items-center justify-center px-5 py-10">
+    <div className="flex-1 flex flex-col items-center justify-center px-5 py-10 relative">
       <div className="w-full max-w-3xl space-y-10 text-center fade-up">
         <h1 className="text-2xl tracking-tight">songbrackets.xyz</h1>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
@@ -141,6 +150,18 @@ function Landing({ onPick }: { onPick: (name: string) => void }) {
           ))}
         </div>
       </div>
+      <footer className="absolute bottom-4 left-0 right-0 text-center text-xs text-black">
+        Built by{" "}
+        <a
+          href="https://aminjeddi.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-black hover:text-black/40 transition-colors duration-200"
+          style={{ transitionTimingFunction: "var(--ease-out)" }}
+        >
+          Amin Jeddi
+        </a>
+      </footer>
     </div>
   );
 }
