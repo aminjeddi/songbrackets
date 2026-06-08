@@ -1,8 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { seedOrder } from "./lib/bracket";
+import { useEffect, useMemo, useState } from "react";
+import { seedOrder, roundName } from "./lib/bracket";
 import { ARTISTS, getArtist } from "./lib/data";
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 768px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return isMobile;
+}
 
 type Song = { title: string; seed: number };
 type Slot = Song | null;
@@ -71,7 +84,7 @@ export default function Page() {
     <main className="h-screen w-screen overflow-hidden flex flex-col">
       {phase === "landing" && <Landing onPick={start} />}
       {phase === "playing" && (
-        <Bracket
+        <PlayingView
           artist={artist}
           rounds={rounds}
           onPick={pick}
@@ -89,7 +102,7 @@ export default function Page() {
 function cleanTitle(raw: string): string {
   return raw
     // Remove any parenthetical containing a feature/collab marker, anywhere inside it.
-    .replace(/\s*\([^)]*\b(?:ft\.?|feat\.?|featuring|w\/)\b[^)]*\)/gi, "")
+    .replace(/\s*\([^)]*\b(?:ft\.?|feat\.?|featuring|w\/)[^)]*\)/gi, "")
     // Remove release-status annotations.
     .replace(/\s*\((?:unreleased|rare|leaked|leaked\s+demo|demo)\)/gi, "")
     .replace(/\s{2,}/g, " ")
@@ -186,6 +199,118 @@ function cardGeom(col: number, slotInSide: number, level: number) {
     height: CARD_H_PCT,
     centerY: yCenter,
   };
+}
+
+/* Mobile vs desktop switcher */
+function PlayingView(props: {
+  artist: string;
+  rounds: Slot[][];
+  onPick: (level: number, parentIdx: number, winner: Song) => void;
+  onReset: () => void;
+  onShuffle: () => void;
+}) {
+  const isMobile = useIsMobile();
+  return isMobile ? <MobileBracket {...props} /> : <Bracket {...props} />;
+}
+
+/* Find the next decidable matchup in bracket order (round by round). */
+function findNextMatchup(rounds: Slot[][]) {
+  for (let L = 0; L < rounds.length - 1; L++) {
+    for (let p = 0; p < rounds[L + 1].length; p++) {
+      const a = rounds[L][p * 2];
+      const b = rounds[L][p * 2 + 1];
+      if (a && b && rounds[L + 1][p] == null) {
+        return { level: L, parentIdx: p, a, b };
+      }
+    }
+  }
+  return null;
+}
+
+function MobileBracket({
+  artist,
+  rounds,
+  onPick,
+  onReset,
+  onShuffle,
+}: {
+  artist: string;
+  rounds: Slot[][];
+  onPick: (level: number, parentIdx: number, winner: Song) => void;
+  onReset: () => void;
+  onShuffle: () => void;
+}) {
+  const decided = useMemo(
+    () => rounds.slice(1).reduce((acc, row) => acc + row.filter(Boolean).length, 0),
+    [rounds]
+  );
+  const next = findNextMatchup(rounds);
+  const champion = rounds[TOTAL_ROUNDS]?.[0] || null;
+  // round name: derive from the current matchup's level (round size = entrants at that level)
+  const roundSize = next ? rounds[next.level].length : 0;
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      <Header
+        artist={artist}
+        decided={decided}
+        total={63}
+        onReset={onReset}
+        onShuffle={onShuffle}
+      />
+
+      <div className="flex-1 flex flex-col px-5 py-6 gap-4 min-h-0">
+        {next && (
+          <>
+            <div className="text-center text-[10px] uppercase tracking-widest opacity-60 fade-up">
+              {roundName(roundSize)} · matchup {decided + 1} / 63
+            </div>
+            <div className="flex-1 flex flex-col gap-3 min-h-0">
+              <MobilePickButton
+                key={`a-${next.a.seed}`}
+                song={next.a}
+                onPick={() => onPick(next.level, next.parentIdx, next.a)}
+              />
+              <div className="text-center text-[10px] uppercase tracking-widest opacity-40">
+                vs
+              </div>
+              <MobilePickButton
+                key={`b-${next.b.seed}`}
+                song={next.b}
+                onPick={() => onPick(next.level, next.parentIdx, next.b)}
+              />
+            </div>
+          </>
+        )}
+
+        {!next && champion && (
+          <div className="flex-1 flex flex-col items-center justify-center text-center gap-3 champion-in">
+            <div className="text-[10px] uppercase tracking-widest opacity-60">
+              {artist} champion
+            </div>
+            <div className="text-3xl leading-tight">{champion.title}</div>
+            <button
+              onClick={onReset}
+              className="card clickable rounded-xl border-2 border-black text-xs uppercase tracking-widest px-4 py-2 mt-4"
+            >
+              start over
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MobilePickButton({ song, onPick }: { song: Song; onPick: () => void }) {
+  return (
+    <button
+      onClick={onPick}
+      className="card clickable card-enter rounded-2xl border-2 border-black flex-1 min-h-0 flex items-center justify-center px-6 text-center"
+    >
+      <span className="text-lg leading-tight">{song.title}</span>
+    </button>
+  );
 }
 
 function Bracket({
