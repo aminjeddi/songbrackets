@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+html, body {
+  background: #ffffff;
+  color: #111111;
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+
+/* Card animation: entry + press feedback */
+.card {
+  transition:
+    transform 180ms var(--ease-out),
+    top 520ms var(--ease-in-out),
+    left 520ms var(--ease-in-out),
+    background-color 180ms var(--ease-out),
+    color 180ms var(--ease-out),
+    opacity 180ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .card.clickable:hover {
+    background-color: #111;
+    color: #fff;
+  }
+}
+
+.card.clickable:active {
+  transform: scale(0.97);
+}
+
+.card.winner {
+  background-color: #111;
+  color: #fff;
+}
+
+.card.eliminated {
+  opacity: 0.28;
+}
+
+.card.empty {
+  opacity: 0.18;
+}
+
+/* Stagger entry */
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(4px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.card-enter {
+  animation: cardIn 280ms var(--ease-out) both;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 320ms var(--ease-out) both; }
+
+@keyframes championIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.champion-in { animation: championIn 420ms var(--ease-out) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .card, .card-enter, .fade-up, .champion-in {
+    animation: none !important;
+    transition: background-color 180ms ease, color 180ms ease, opacity 180ms ease !important;
+  }
+}
+
+/* Bracket connectors via SVG layer — kept thin */
+.connector {
+  stroke: #111;
+  stroke-width: 1.25;
+  fill: none;
+  opacity: 0.35;
+}

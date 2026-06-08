@@ -1,0 +1,530 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { seedOrder } from "./lib/bracket";
+import { ARTISTS, getArtist } from "./lib/data";
+
+type Song = { title: string; seed: number };
+type Slot = Song | null;
+type Phase = "landing" | "playing";
+
+const TOTAL_ROUNDS = 6; // 64 -> 32 -> 16 -> 8 -> 4 -> 2 -> 1
+
+export default function Page() {
+  const [phase, setPhase] = useState<Phase>("landing");
+  const [artist, setArtist] = useState("");
+  const [rounds, setRounds] = useState<Slot[][]>([]);
+
+  function start(name: string) {
+    const a = getArtist(name);
+    if (!a) return;
+    const songs: Song[] = a.songs.map((title, i) => ({
+      title: cleanTitle(title),
+      seed: i + 1,
+    }));
+    const order = seedOrder(64);
+    const leaves: Slot[] = order.map((s) => songs[s - 1]);
+    const init: Slot[][] = [leaves];
+    for (let r = 1; r <= TOTAL_ROUNDS; r++) {
+      init.push(new Array(leaves.length / 2 ** r).fill(null));
+    }
+    setArtist(a.name);
+    setRounds(init);
+    setPhase("playing");
+  }
+
+  function pick(level: number, parentIdx: number, winner: Song) {
+    setRounds((prev) => {
+      const next = prev.map((row) => row.slice());
+      const replaced = next[level + 1][parentIdx];
+      if (replaced && replaced.seed !== winner.seed) {
+        clearAncestors(next, level + 1, parentIdx);
+      }
+      next[level + 1][parentIdx] = winner;
+      return next;
+    });
+  }
+
+  function reset() {
+    setPhase("landing");
+    setArtist("");
+    setRounds([]);
+  }
+
+  function shuffle() {
+    setRounds((prev) => {
+      if (prev.length === 0) return prev;
+      const leaves = prev[0].slice();
+      for (let i = leaves.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [leaves[i], leaves[j]] = [leaves[j], leaves[i]];
+      }
+      const next: Slot[][] = [leaves];
+      for (let r = 1; r <= TOTAL_ROUNDS; r++) {
+        next.push(new Array(leaves.length / 2 ** r).fill(null));
+      }
+      return next;
+    });
+  }
+
+  return (
+    <main className="h-screen w-screen overflow-hidden flex flex-col">
+      {phase === "landing" && <Landing onPick={start} />}
+      {phase === "playing" && (
+        <Bracket
+          artist={artist}
+          rounds={rounds}
+          onPick={pick}
+          onReset={reset}
+          onShuffle={shuffle}
+        />
+      )}
+    </main>
+  );
+}
+
+// Strip parentheticals that are annotations (features, collabs, release notes),
+// but keep parentheticals that are part of the actual song title (subtitles,
+// reprises, alternate names like "(Hell Ya Fuckin' Right)" or "(With Me)").
+function cleanTitle(raw: string): string {
+  return raw
+    // Remove any parenthetical containing a feature/collab marker, anywhere inside it.
+    .replace(/\s*\([^)]*\b(?:ft\.?|feat\.?|featuring|w\/)\b[^)]*\)/gi, "")
+    // Remove release-status annotations.
+    .replace(/\s*\((?:unreleased|rare|leaked|leaked\s+demo|demo)\)/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function clearAncestors(rounds: Slot[][], level: number, idx: number) {
+  let l = level;
+  let i = idx;
+  while (l < rounds.length - 1) {
+    const parent = Math.floor(i / 2);
+    if (rounds[l + 1][parent] === null) break;
+    rounds[l + 1][parent] = null;
+    l += 1;
+    i = parent;
+  }
+}
+
+/* ---------- Landing ---------- */
+
+function Landing({ onPick }: { onPick: (name: string) => void }) {
+  return (
+    <div className="flex-1 flex items-center justify-center px-5 py-12">
+      <div className="w-full max-w-md space-y-10 text-center fade-up">
+        <h1 className="text-2xl tracking-tight">songbrackets.xyz</h1>
+        <div className="flex flex-col gap-2.5">
+          {ARTISTS.map((a, i) => (
+            <button
+              key={a.name}
+              onClick={() => onPick(a.name)}
+              style={{ animationDelay: `${i * 50}ms` }}
+              className="card clickable card-enter rounded-xl border-2 border-black px-4 py-3 text-sm"
+            >
+              {a.name}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Bracket geometry ----------
+   13 columns: 6 left (levels 0..5) + 1 center (champion) + 6 right (levels 5..0)
+   32 rows for leaf alignment.
+*/
+const TOTAL_COLS = 13;
+const LEAVES_PER_SIDE = 32;
+const COL_W = 100 / TOTAL_COLS; // %
+const CARD_PAD_X = 0.5;
+const COL_GAP_X = 1.6;
+
+// Lay out the 32 left-side leaves with explicit gaps so siblings within a pair
+// have a small gap and adjacent pairs have a larger gap. All vertical units
+// are "rows"; we scale to % at the end.
+const PAIR_EXTRA = 0.5; // extra rows of space between consecutive pairs
+const CARD_RATIO = 0.72; // fraction of one row that the card itself occupies
+
+const LEAF_YS_ROW: number[] = (() => {
+  const ys: number[] = [];
+  let cursor = 0;
+  for (let i = 0; i < LEAVES_PER_SIDE; i++) {
+    if (i > 0 && i % 2 === 0) cursor += PAIR_EXTRA;
+    ys.push(cursor + 0.5);
+    cursor += 1;
+  }
+  return ys;
+})();
+const TOTAL_ROWS = LEAVES_PER_SIDE + (LEAVES_PER_SIDE / 2 - 1) * PAIR_EXTRA;
+const SCALE = 100 / TOTAL_ROWS;
+const CARD_H_PCT = CARD_RATIO * SCALE;
+
+// Precompute slot y-centers per level (one side). Each level's slot center is
+// the midpoint of its two children — keeps connectors aligned.
+const SLOT_YS_PCT: number[][] = (() => {
+  const levels: number[][] = [LEAF_YS_ROW.map((y) => y * SCALE)];
+  for (let L = 1; L <= TOTAL_ROUNDS - 1; L++) {
+    const prev = levels[L - 1];
+    const cur: number[] = [];
+    for (let k = 0; k < prev.length / 2; k++) {
+      cur.push((prev[2 * k] + prev[2 * k + 1]) / 2);
+    }
+    levels.push(cur);
+  }
+  return levels;
+})();
+
+function cardGeom(col: number, slotInSide: number, level: number) {
+  const yCenter = SLOT_YS_PCT[level][slotInSide];
+  return {
+    top: yCenter - CARD_H_PCT / 2,
+    left: col * COL_W + CARD_PAD_X,
+    width: COL_W - 2 * CARD_PAD_X,
+    height: CARD_H_PCT,
+    centerY: yCenter,
+  };
+}
+
+function Bracket({
+  artist,
+  rounds,
+  onPick,
+  onReset,
+  onShuffle,
+}: {
+  artist: string;
+  rounds: Slot[][];
+  onPick: (level: number, parentIdx: number, winner: Song) => void;
+  onReset: () => void;
+  onShuffle: () => void;
+}) {
+  const decided = useMemo(
+    () => rounds.slice(1).reduce((acc, row) => acc + row.filter(Boolean).length, 0),
+    [rounds]
+  );
+  const champion = rounds[TOTAL_ROUNDS]?.[0] || null;
+
+  // Build positions for every slot in the tree.
+  type CardPos = {
+    level: number;
+    parentIdx: number;
+    side: "left" | "right" | "center";
+    col: number;
+    slot: Slot;
+    sibling: Slot;
+    parent: Slot;
+    isTop: boolean; // top level (champion)
+    geom: ReturnType<typeof cardGeom>;
+    globalIdx: number;
+  };
+
+  const cards: CardPos[] = [];
+  const connectors: { left: number; top: number; width?: number; height?: number }[] = [];
+
+  // Left side cols 0..5 (levels 0..5)
+  // Right side cols 7..12 (levels 5..0)
+  // Center col 6 = champion (level 6)
+  for (let level = 0; level <= TOTAL_ROUNDS - 1; level++) {
+    const totalAtLevel = rounds[level].length;
+    const half = totalAtLevel / 2;
+    for (let g = 0; g < totalAtLevel; g++) {
+      const isLeft = g < half;
+      const slotInSide = isLeft ? g : g - half;
+      const col = isLeft ? level : TOTAL_COLS - 1 - level;
+      const geom = cardGeom(col, slotInSide, level);
+      const siblingG = g % 2 === 0 ? g + 1 : g - 1;
+      const parentIdx = Math.floor(g / 2);
+      cards.push({
+        level,
+        parentIdx,
+        side: isLeft ? "left" : "right",
+        col,
+        slot: rounds[level][g],
+        sibling: rounds[level][siblingG],
+        parent: rounds[level + 1]?.[parentIdx] || null,
+        isTop: false,
+        geom,
+        globalIdx: g,
+      });
+    }
+  }
+
+  // Champion (level TOTAL_ROUNDS, single slot) in center column
+  const champGeom = {
+    top: 50 - CARD_H_PCT / 2,
+    left: 6 * COL_W + CARD_PAD_X,
+    width: COL_W - 2 * CARD_PAD_X,
+    height: CARD_H_PCT,
+    centerY: 50,
+  };
+  cards.push({
+    level: TOTAL_ROUNDS,
+    parentIdx: 0,
+    side: "center",
+    col: 6,
+    slot: rounds[TOTAL_ROUNDS][0],
+    sibling: null,
+    parent: null,
+    isTop: true,
+    geom: champGeom,
+    globalIdx: 0,
+  });
+
+  // Connectors: for each pair at level L, draw bracket between col L and col L+1 (left side)
+  // or between col (12-L) and col (12-L-1) on right side.
+  // For the final step into the center (level 5 → 6), draw from col 5 to col 6, and col 7 to col 6.
+  for (let level = 0; level <= TOTAL_ROUNDS - 1; level++) {
+    // Special case: the championship pair crosses sides (left finalist vs right finalist).
+    // Draw a simple horizontal connector from each finalist into the center column.
+    if (level === TOTAL_ROUNDS - 1) {
+      const leftFinal = cardGeom(5, 0, level);
+      const rightFinal = cardGeom(7, 0, level);
+      const champLeft = champGeom.left;
+      const champRight = champGeom.left + champGeom.width;
+      connectors.push({
+        left: leftFinal.left + leftFinal.width,
+        top: leftFinal.centerY,
+        width: champLeft - (leftFinal.left + leftFinal.width),
+      });
+      connectors.push({
+        left: champRight,
+        top: rightFinal.centerY,
+        width: rightFinal.left - champRight,
+      });
+      continue;
+    }
+
+    const totalAtLevel = rounds[level].length;
+    const half = totalAtLevel / 2;
+    for (let pair = 0; pair < totalAtLevel / 2; pair++) {
+      const g1 = pair * 2;
+      const g2 = pair * 2 + 1;
+      const isLeft = g1 < half;
+      const slotIn1 = isLeft ? g1 : g1 - half;
+      const slotIn2 = isLeft ? g2 : g2 - half;
+      const parentSlotInSide = isLeft ? pair : pair - half / 2;
+
+      const colCard = isLeft ? level : TOTAL_COLS - 1 - level;
+      const colParent = isLeft ? level + 1 : TOTAL_COLS - 1 - (level + 1);
+
+      const g1Geom = cardGeom(colCard, slotIn1, level);
+      const g2Geom = cardGeom(colCard, slotIn2, level);
+      const parentGeom = cardGeom(colParent, parentSlotInSide, level + 1);
+
+      const stubLen = (COL_GAP_X * 0.6); // horizontal stub length in %
+      if (isLeft) {
+        const stubStartX = g1Geom.left + g1Geom.width; // card right edge
+        const stubEndX = stubStartX + stubLen;
+        // horizontal stubs from each card
+        connectors.push({ left: stubStartX, top: g1Geom.centerY, width: stubLen });
+        connectors.push({ left: stubStartX, top: g2Geom.centerY, width: stubLen });
+        // vertical at stubEndX between centers
+        connectors.push({
+          left: stubEndX,
+          top: g1Geom.centerY,
+          height: g2Geom.centerY - g1Geom.centerY,
+        });
+        // horizontal from vertical mid into parent
+        const midY = (g1Geom.centerY + g2Geom.centerY) / 2;
+        connectors.push({
+          left: stubEndX,
+          top: midY,
+          width: parentGeom.left - stubEndX,
+        });
+      } else {
+        // Right side: mirror
+        const stubStartX = g1Geom.left; // card left edge
+        const stubEndX = stubStartX - stubLen;
+        connectors.push({ left: stubEndX, top: g1Geom.centerY, width: stubLen });
+        connectors.push({ left: stubEndX, top: g2Geom.centerY, width: stubLen });
+        connectors.push({
+          left: stubEndX,
+          top: g1Geom.centerY,
+          height: g2Geom.centerY - g1Geom.centerY,
+        });
+        const midY = (g1Geom.centerY + g2Geom.centerY) / 2;
+        const parentRight = parentGeom.left + parentGeom.width;
+        connectors.push({
+          left: parentRight,
+          top: midY,
+          width: stubEndX - parentRight,
+        });
+      }
+    }
+  }
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      <Header
+        artist={artist}
+        decided={decided}
+        total={63}
+        onReset={onReset}
+        onShuffle={onShuffle}
+      />
+
+      <div className="flex-1 relative min-h-0">
+        <div className="absolute inset-0 px-2 py-3">
+          <div className="relative w-full h-full">
+            {/* Connector lines */}
+            {connectors.map((c, i) => (
+              <div
+                key={`c-${i}`}
+                className="absolute bg-black rounded-full"
+                style={{
+                  left: `${c.left}%`,
+                  top: `${c.top}%`,
+                  width: c.width != null ? `${c.width}%` : "2px",
+                  height: c.height != null ? `${c.height}%` : "2px",
+                  transform:
+                    c.height != null ? "translateX(-1px)" : "translateY(-1px)",
+                }}
+              />
+            ))}
+
+            {/* Cards */}
+            {cards.map((c, i) => (
+              <BracketCard
+                key={
+                  c.level === 0 && c.slot
+                    ? `seed-${c.slot.seed}`
+                    : `card-${c.level}-${c.globalIdx}`
+                }
+                card={c}
+                index={i}
+                onPick={onPick}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {champion && <ChampionBanner artist={artist} champion={champion} />}
+    </div>
+  );
+}
+
+function Header({
+  artist,
+  decided,
+  total,
+  onReset,
+  onShuffle,
+}: {
+  artist: string;
+  decided: number;
+  total: number;
+  onReset: () => void;
+  onShuffle: () => void;
+}) {
+  const pct = (decided / total) * 100;
+  return (
+    <div className="shrink-0 bg-white border-b-2 border-black/10 px-4 py-2 fade-up">
+      <div className="max-w-6xl mx-auto flex items-center gap-3">
+        <button
+          onClick={onReset}
+          className="card clickable rounded-lg border-2 border-black text-[10px] uppercase tracking-widest px-3 py-1"
+        >
+          ← back
+        </button>
+        <button
+          onClick={onShuffle}
+          className="card clickable rounded-lg border-2 border-black text-[10px] uppercase tracking-widest px-3 py-1"
+        >
+          shuffle
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline justify-between text-[10px] uppercase tracking-widest opacity-60 mb-1">
+            <span className="truncate">{artist}</span>
+            <span>
+              {decided} / {total}
+            </span>
+          </div>
+          <div className="h-[2px] w-full bg-black/10 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-black rounded-full"
+              style={{ width: `${pct}%`, transition: "width 240ms var(--ease-out)" }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BracketCard({
+  card,
+  index,
+  onPick,
+}: {
+  card: {
+    level: number;
+    parentIdx: number;
+    side: "left" | "right" | "center";
+    slot: Slot;
+    sibling: Slot;
+    parent: Slot;
+    isTop: boolean;
+    geom: ReturnType<typeof cardGeom>;
+    globalIdx: number;
+  };
+  index: number;
+  onPick: (level: number, parentIdx: number, winner: Song) => void;
+}) {
+  const { slot, sibling, parent, isTop, geom, level, parentIdx, side } = card;
+
+  const decidable = !isTop && slot != null && sibling != null;
+  const isWinnerHere = parent && slot && parent.seed === slot.seed;
+  const isLoserHere = parent && slot && parent.seed !== slot.seed;
+  const isChampion = isTop && slot != null;
+
+  const style: React.CSSProperties = {
+    position: "absolute",
+    top: `${geom.top}%`,
+    left: `${geom.left}%`,
+    width: `${geom.width}%`,
+    height: `${geom.height}%`,
+    animationDelay: `${Math.min(level * 35 + (card.globalIdx % 16) * 10, 500)}ms`,
+    textAlign: side === "right" ? "right" : "left",
+  };
+
+  if (!slot) {
+    return (
+      <div
+        className="card empty rounded-md border-2 border-black flex items-center justify-center text-[8px] uppercase tracking-widest"
+        style={style}
+      >
+        {isTop ? "champion" : ""}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => decidable && onPick(level, parentIdx, slot)}
+      disabled={!decidable}
+      style={style}
+      className={`card card-enter rounded-md border-2 border-black px-2 flex items-center leading-none ${
+        decidable ? "clickable" : "cursor-default"
+      } ${isWinnerHere || isChampion ? "winner" : ""} ${isLoserHere ? "eliminated" : ""}`}
+    >
+      <span className="text-[10px] truncate flex-1">{slot.title}</span>
+    </button>
+  );
+}
+
+function ChampionBanner({ artist, champion }: { artist: string; champion: Song }) {
+  return (
+    <div className="shrink-0 bg-white border-t-2 border-black px-4 py-2 champion-in">
+      <div className="max-w-6xl mx-auto text-center">
+        <div className="text-[9px] uppercase tracking-widest opacity-60">
+          {artist} champion
+        </div>
+        <div className="text-base md:text-lg leading-tight">{champion.title}</div>
+      </div>
+    </div>
+  );
+}
