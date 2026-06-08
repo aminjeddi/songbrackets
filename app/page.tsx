@@ -22,7 +22,22 @@ type Song = { title: string; seed: number };
 type Slot = Song | null;
 type Phase = "landing" | "playing";
 
-const TOTAL_ROUNDS = 6; // 64 -> 32 -> 16 -> 8 -> 4 -> 2 -> 1
+// Largest power of 2 <= songCount, capped at 64, floored at 16.
+function bracketSizeFor(songCount: number): number {
+  for (const size of [64, 32, 16]) {
+    if (songCount >= size) return size;
+  }
+  return 0;
+}
+
+function buildEmptyRounds(leaves: Slot[]): Slot[][] {
+  const totalRounds = Math.log2(leaves.length);
+  const init: Slot[][] = [leaves];
+  for (let r = 1; r <= totalRounds; r++) {
+    init.push(new Array(leaves.length / 2 ** r).fill(null));
+  }
+  return init;
+}
 
 export default function Page() {
   const [phase, setPhase] = useState<Phase>("landing");
@@ -33,24 +48,24 @@ export default function Page() {
     const a = getArtist(name);
     if (!a) return;
     playSoft();
-    const songs: Song[] = a.songs.map((title, i) => ({
+    const allSongs: Song[] = a.songs.map((title, i) => ({
       title: cleanTitle(title),
       seed: i + 1,
     }));
-    const order = seedOrder(64);
+    const size = bracketSizeFor(allSongs.length);
+    if (!size) return;
+    const songs = allSongs.slice(0, size);
+    const order = seedOrder(size);
     const leaves: Slot[] = order.map((s) => songs[s - 1]);
-    const init: Slot[][] = [leaves];
-    for (let r = 1; r <= TOTAL_ROUNDS; r++) {
-      init.push(new Array(leaves.length / 2 ** r).fill(null));
-    }
     setArtist(a.name);
-    setRounds(init);
+    setRounds(buildEmptyRounds(leaves));
     setPhase("playing");
   }
 
   function pick(level: number, parentIdx: number, winner: Song) {
     playPick();
-    if (level + 1 === TOTAL_ROUNDS && parentIdx === 0) {
+    const totalRounds = rounds.length - 1;
+    if (level + 1 === totalRounds && parentIdx === 0) {
       // Champion just decided — chase the pick tick with a brief two-note rise.
       setTimeout(playWin, 90);
     }
@@ -81,11 +96,7 @@ export default function Page() {
         const j = Math.floor(Math.random() * (i + 1));
         [leaves[i], leaves[j]] = [leaves[j], leaves[i]];
       }
-      const next: Slot[][] = [leaves];
-      for (let r = 1; r <= TOTAL_ROUNDS; r++) {
-        next.push(new Array(leaves.length / 2 ** r).fill(null));
-      }
-      return next;
+      return buildEmptyRounds(leaves);
     });
   }
 
@@ -167,57 +178,62 @@ function Landing({ onPick }: { onPick: (name: string) => void }) {
 }
 
 /* ---------- Bracket geometry ----------
-   13 columns: 6 left (levels 0..5) + 1 center (champion) + 6 right (levels 5..0)
-   32 rows for leaf alignment.
+   Columns: totalRounds on left + 1 center (champion) + totalRounds on right.
+   Per-side leaf count = bracketSize / 2.
 */
-const TOTAL_COLS = 13;
-const LEAVES_PER_SIDE = 32;
-const COL_W = 100 / TOTAL_COLS; // %
 const CARD_PAD_X = 0.5;
 const COL_GAP_X = 1.6;
-
-// Lay out the 32 left-side leaves with explicit gaps so siblings within a pair
-// have a small gap and adjacent pairs have a larger gap. All vertical units
-// are "rows"; we scale to % at the end.
 const PAIR_EXTRA = 0.5; // extra rows of space between consecutive pairs
 const CARD_RATIO = 0.72; // fraction of one row that the card itself occupies
 
-const LEAF_YS_ROW: number[] = (() => {
-  const ys: number[] = [];
+type Layout = {
+  totalRounds: number;
+  leavesPerSide: number;
+  totalCols: number;
+  centerCol: number;
+  colW: number;
+  cardHPct: number;
+  slotYsPct: number[][];
+};
+
+function getLayout(bracketSize: number): Layout {
+  const totalRounds = Math.log2(bracketSize);
+  const leavesPerSide = bracketSize / 2;
+  const totalCols = 2 * totalRounds + 1;
+  const centerCol = totalRounds;
+  const colW = 100 / totalCols;
+
+  const leafYs: number[] = [];
   let cursor = 0;
-  for (let i = 0; i < LEAVES_PER_SIDE; i++) {
+  for (let i = 0; i < leavesPerSide; i++) {
     if (i > 0 && i % 2 === 0) cursor += PAIR_EXTRA;
-    ys.push(cursor + 0.5);
+    leafYs.push(cursor + 0.5);
     cursor += 1;
   }
-  return ys;
-})();
-const TOTAL_ROWS = LEAVES_PER_SIDE + (LEAVES_PER_SIDE / 2 - 1) * PAIR_EXTRA;
-const SCALE = 100 / TOTAL_ROWS;
-const CARD_H_PCT = CARD_RATIO * SCALE;
+  const totalRows = leavesPerSide + (leavesPerSide / 2 - 1) * PAIR_EXTRA;
+  const scale = 100 / totalRows;
+  const cardHPct = CARD_RATIO * scale;
 
-// Precompute slot y-centers per level (one side). Each level's slot center is
-// the midpoint of its two children — keeps connectors aligned.
-const SLOT_YS_PCT: number[][] = (() => {
-  const levels: number[][] = [LEAF_YS_ROW.map((y) => y * SCALE)];
-  for (let L = 1; L <= TOTAL_ROUNDS - 1; L++) {
-    const prev = levels[L - 1];
+  const slotYsPct: number[][] = [leafYs.map((y) => y * scale)];
+  for (let L = 1; L <= totalRounds - 1; L++) {
+    const prev = slotYsPct[L - 1];
     const cur: number[] = [];
     for (let k = 0; k < prev.length / 2; k++) {
       cur.push((prev[2 * k] + prev[2 * k + 1]) / 2);
     }
-    levels.push(cur);
+    slotYsPct.push(cur);
   }
-  return levels;
-})();
 
-function cardGeom(col: number, slotInSide: number, level: number) {
-  const yCenter = SLOT_YS_PCT[level][slotInSide];
+  return { totalRounds, leavesPerSide, totalCols, centerCol, colW, cardHPct, slotYsPct };
+}
+
+function cardGeom(layout: Layout, col: number, slotInSide: number, level: number) {
+  const yCenter = layout.slotYsPct[level][slotInSide];
   return {
-    top: yCenter - CARD_H_PCT / 2,
-    left: col * COL_W + CARD_PAD_X,
-    width: COL_W - 2 * CARD_PAD_X,
-    height: CARD_H_PCT,
+    top: yCenter - layout.cardHPct / 2,
+    left: col * layout.colW + CARD_PAD_X,
+    width: layout.colW - 2 * CARD_PAD_X,
+    height: layout.cardHPct,
     centerY: yCenter,
   };
 }
@@ -266,7 +282,10 @@ function MobileBracket({
     [rounds]
   );
   const next = findNextMatchup(rounds);
-  const champion = rounds[TOTAL_ROUNDS]?.[0] || null;
+  const bracketSize = rounds[0]?.length || 0;
+  const totalRounds = rounds.length - 1;
+  const totalMatchups = bracketSize - 1;
+  const champion = rounds[totalRounds]?.[0] || null;
   // round name: derive from the current matchup's level (round size = entrants at that level)
   const roundSize = next ? rounds[next.level].length : 0;
 
@@ -275,7 +294,7 @@ function MobileBracket({
       <Header
         artist={artist}
         decided={decided}
-        total={63}
+        total={totalMatchups}
         onReset={onReset}
         onShuffle={onShuffle}
       />
@@ -284,7 +303,7 @@ function MobileBracket({
         {next && (
           <>
             <div className="text-center text-[10px] uppercase tracking-widest opacity-60 fade-up">
-              {roundName(roundSize)} · matchup {decided + 1} / 63
+              {roundName(roundSize)} · matchup {decided + 1} / {totalMatchups}
             </div>
             <div className="flex-1 flex flex-col gap-3 min-h-0">
               <MobilePickButton
@@ -351,7 +370,11 @@ function Bracket({
     () => rounds.slice(1).reduce((acc, row) => acc + row.filter(Boolean).length, 0),
     [rounds]
   );
-  const champion = rounds[TOTAL_ROUNDS]?.[0] || null;
+  const bracketSize = rounds[0]?.length || 0;
+  const layout = useMemo(() => getLayout(bracketSize), [bracketSize]);
+  const { totalRounds, totalCols, centerCol, cardHPct, colW } = layout;
+  const totalMatchups = bracketSize - 1;
+  const champion = rounds[totalRounds]?.[0] || null;
 
   // Build positions for every slot in the tree.
   type CardPos = {
@@ -370,17 +393,16 @@ function Bracket({
   const cards: CardPos[] = [];
   const connectors: { left: number; top: number; width?: number; height?: number }[] = [];
 
-  // Left side cols 0..5 (levels 0..5)
-  // Right side cols 7..12 (levels 5..0)
-  // Center col 6 = champion (level 6)
-  for (let level = 0; level <= TOTAL_ROUNDS - 1; level++) {
+  // Left side cols 0..totalRounds-1, right side cols totalCols-1..centerCol+1,
+  // center col = champion.
+  for (let level = 0; level <= totalRounds - 1; level++) {
     const totalAtLevel = rounds[level].length;
     const half = totalAtLevel / 2;
     for (let g = 0; g < totalAtLevel; g++) {
       const isLeft = g < half;
       const slotInSide = isLeft ? g : g - half;
-      const col = isLeft ? level : TOTAL_COLS - 1 - level;
-      const geom = cardGeom(col, slotInSide, level);
+      const col = isLeft ? level : totalCols - 1 - level;
+      const geom = cardGeom(layout, col, slotInSide, level);
       const siblingG = g % 2 === 0 ? g + 1 : g - 1;
       const parentIdx = Math.floor(g / 2);
       cards.push({
@@ -398,20 +420,20 @@ function Bracket({
     }
   }
 
-  // Champion (level TOTAL_ROUNDS, single slot) in center column
+  // Champion (top level, single slot) in center column
   const champGeom = {
-    top: 50 - CARD_H_PCT / 2,
-    left: 6 * COL_W + CARD_PAD_X,
-    width: COL_W - 2 * CARD_PAD_X,
-    height: CARD_H_PCT,
+    top: 50 - cardHPct / 2,
+    left: centerCol * colW + CARD_PAD_X,
+    width: colW - 2 * CARD_PAD_X,
+    height: cardHPct,
     centerY: 50,
   };
   cards.push({
-    level: TOTAL_ROUNDS,
+    level: totalRounds,
     parentIdx: 0,
     side: "center",
-    col: 6,
-    slot: rounds[TOTAL_ROUNDS][0],
+    col: centerCol,
+    slot: rounds[totalRounds][0],
     sibling: null,
     parent: null,
     isTop: true,
@@ -419,15 +441,12 @@ function Bracket({
     globalIdx: 0,
   });
 
-  // Connectors: for each pair at level L, draw bracket between col L and col L+1 (left side)
-  // or between col (12-L) and col (12-L-1) on right side.
-  // For the final step into the center (level 5 → 6), draw from col 5 to col 6, and col 7 to col 6.
-  for (let level = 0; level <= TOTAL_ROUNDS - 1; level++) {
-    // Special case: the championship pair crosses sides (left finalist vs right finalist).
-    // Draw a simple horizontal connector from each finalist into the center column.
-    if (level === TOTAL_ROUNDS - 1) {
-      const leftFinal = cardGeom(5, 0, level);
-      const rightFinal = cardGeom(7, 0, level);
+  // Connectors: per-side pairs, plus a special two-stub connector for the
+  // championship (left finalist + right finalist into the center column).
+  for (let level = 0; level <= totalRounds - 1; level++) {
+    if (level === totalRounds - 1) {
+      const leftFinal = cardGeom(layout, centerCol - 1, 0, level);
+      const rightFinal = cardGeom(layout, centerCol + 1, 0, level);
       const champLeft = champGeom.left;
       const champRight = champGeom.left + champGeom.width;
       connectors.push({
@@ -453,12 +472,12 @@ function Bracket({
       const slotIn2 = isLeft ? g2 : g2 - half;
       const parentSlotInSide = isLeft ? pair : pair - half / 2;
 
-      const colCard = isLeft ? level : TOTAL_COLS - 1 - level;
-      const colParent = isLeft ? level + 1 : TOTAL_COLS - 1 - (level + 1);
+      const colCard = isLeft ? level : totalCols - 1 - level;
+      const colParent = isLeft ? level + 1 : totalCols - 1 - (level + 1);
 
-      const g1Geom = cardGeom(colCard, slotIn1, level);
-      const g2Geom = cardGeom(colCard, slotIn2, level);
-      const parentGeom = cardGeom(colParent, parentSlotInSide, level + 1);
+      const g1Geom = cardGeom(layout, colCard, slotIn1, level);
+      const g2Geom = cardGeom(layout, colCard, slotIn2, level);
+      const parentGeom = cardGeom(layout, colParent, parentSlotInSide, level + 1);
 
       const stubLen = (COL_GAP_X * 0.6); // horizontal stub length in %
       if (isLeft) {
@@ -507,7 +526,7 @@ function Bracket({
       <Header
         artist={artist}
         decided={decided}
-        total={63}
+        total={totalMatchups}
         onReset={onReset}
         onShuffle={onShuffle}
       />
@@ -578,8 +597,24 @@ function Header({
         </button>
         <button
           onClick={onShuffle}
-          className="card clickable rounded-lg border-2 border-black text-[10px] uppercase tracking-widest px-3 py-1"
+          className="card clickable rounded-lg border-2 border-black text-[10px] uppercase tracking-widest px-3 py-1 inline-flex items-center gap-1.5"
         >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="w-3 h-3"
+            aria-hidden
+          >
+            <path d="M16 3h5v5" />
+            <path d="M4 20 21 3" />
+            <path d="M21 16v5h-5" />
+            <path d="m15 15 6 6" />
+            <path d="m4 4 5 5" />
+          </svg>
           shuffle
         </button>
         <div className="flex-1 min-w-0">
