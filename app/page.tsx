@@ -149,23 +149,25 @@ function clearAncestors(rounds: Slot[][], level: number, idx: number) {
 
 function Landing({ onPick }: { onPick: (name: string) => void }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-5 py-10 relative">
-      <div className="w-full max-w-3xl space-y-10 text-center fade-up">
-        <h1 className="text-2xl tracking-tight">songbrackets.xyz</h1>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
-          {ARTISTS.map((a, i) => (
-            <button
-              key={a.name}
-              onClick={() => onPick(a.name)}
-              style={{ animationDelay: `${i * 35}ms` }}
-              className="card clickable card-enter rounded-xl border-2 border-black px-3 py-3 text-sm leading-tight"
-            >
-              {a.name}
-            </button>
-          ))}
+    <div className="flex-1 flex flex-col px-5 pt-10 pb-6">
+      <div className="flex-1 flex items-center justify-center w-full">
+        <div className="w-full max-w-3xl space-y-10 text-center fade-up">
+          <h1 className="text-2xl tracking-tight">songbrackets.xyz</h1>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-2.5">
+            {ARTISTS.map((a, i) => (
+              <button
+                key={a.name}
+                onClick={() => onPick(a.name)}
+                style={{ animationDelay: `${i * 35}ms` }}
+                className="card clickable card-enter rounded-xl border-2 border-black px-3 py-3 text-sm leading-tight"
+              >
+                {a.name}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
-      <footer className="mt-10 mb-6 md:mt-0 md:mb-0 md:absolute md:bottom-4 md:left-0 md:right-0 text-center text-xs text-black">
+      <footer className="text-center text-xs text-black pt-10 md:pt-6">
         Built by{" "}
         <a
           href="https://aminjeddi.com/"
