@@ -124,13 +124,29 @@ export default function Page() {
 // but keep parentheticals that are part of the actual song title (subtitles,
 // reprises, alternate names like "(Hell Ya Fuckin' Right)" or "(With Me)").
 function cleanTitle(raw: string): string {
-  return raw
-    // Remove any parenthetical containing a feature/collab marker, anywhere inside it.
-    .replace(/\s*\([^)]*\b(?:ft\.?|feat\.?|featuring|w\/)[^)]*\)/gi, "")
-    // Remove release-status annotations.
-    .replace(/\s*\((?:unreleased|rare|leaked|leaked\s+demo|demo)\)/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  return censorSwears(
+    raw
+      // Remove any parenthetical containing a feature/collab marker, anywhere inside it.
+      .replace(/\s*\([^)]*\b(?:ft\.?|feat\.?|featuring|w\/)[^)]*\)/gi, "")
+      // Remove release-status annotations.
+      .replace(/\s*\((?:unreleased|rare|leaked|leaked\s+demo|demo)\)/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+  );
+}
+
+// Replace the second letter of common swear roots with a single asterisk.
+// Pre-censored variants (F**k, Sh!t, N****s) are left untouched.
+const SWEAR_ROOTS = ["fuck", "shit", "bitch", "pussy", "nigga", "nigger", "cunt"];
+function censorSwears(text: string): string {
+  let out = text;
+  for (const root of SWEAR_ROOTS) {
+    const re = new RegExp(`\\b(${root})(\\w*)\\b`, "gi");
+    out = out.replace(re, (_m, base: string, suffix: string) => {
+      return base[0] + "*" + base.slice(2) + suffix;
+    });
+  }
+  return out;
 }
 
 function clearAncestors(rounds: Slot[][], level: number, idx: number) {
