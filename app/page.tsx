@@ -303,13 +303,13 @@ function MobileBracket({
         onShuffle={onShuffle}
       />
 
-      <div className="flex-1 flex flex-col justify-center px-5 py-4 gap-3 min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col px-5 pt-3 pb-4 gap-2.5 min-h-0 overflow-hidden">
         {next && (
           <>
             <div className="text-center text-[10px] uppercase tracking-widest opacity-60 fade-up">
               {roundName(roundSize)} · matchup {decided + 1} / {totalMatchups}
             </div>
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-2">
               <MobilePickButton
                 key={`a-${next.a.seed}`}
                 song={next.a}
@@ -351,7 +351,7 @@ function MobilePickButton({ song, onPick }: { song: Song; onPick: () => void }) 
     <button
       onClick={onPick}
       className="card clickable card-enter rounded-2xl border-2 border-black flex items-center justify-center px-5 text-center"
-      style={{ height: "min(32vh, 240px)" }}
+      style={{ height: "min(26vh, 190px)" }}
     >
       <span className="text-base leading-snug">{song.title}</span>
     </button>
