@@ -167,15 +167,14 @@ function Landing({ onPick }: { onPick: (name: string) => void }) {
   return (
     <div className="flex-1 flex flex-col px-5 pt-10 pb-6">
       <div className="flex-1 flex items-center justify-center w-full">
-        <div className="w-full max-w-3xl space-y-10 text-center fade-up">
+        <div className="w-full max-w-3xl space-y-10 text-center blur-in">
           <h1 className="text-2xl tracking-tight">songbrackets.xyz</h1>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-2.5">
-            {ARTISTS.map((a, i) => (
+            {ARTISTS.map((a) => (
               <button
                 key={a.name}
                 onClick={() => onPick(a.name)}
-                style={{ animationDelay: `${i * 35}ms` }}
-                className="card clickable card-enter rounded-xl border-2 border-black px-3 py-3 text-sm leading-tight"
+                className="card clickable rounded-xl border-2 border-black px-3 py-3 text-sm leading-tight"
               >
                 {a.name}
               </button>
