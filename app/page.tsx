@@ -101,7 +101,11 @@ export default function Page() {
   }
 
   return (
-    <main className="h-screen w-screen overflow-hidden flex flex-col">
+    <main
+      className={`w-screen flex flex-col ${
+        phase === "playing" ? "h-screen overflow-hidden" : "min-h-screen"
+      }`}
+    >
       {phase === "landing" && <Landing onPick={start} />}
       {phase === "playing" && (
         <PlayingView
@@ -299,13 +303,13 @@ function MobileBracket({
         onShuffle={onShuffle}
       />
 
-      <div className="flex-1 flex flex-col px-5 py-6 gap-4 min-h-0">
+      <div className="flex-1 flex flex-col justify-center px-5 py-4 gap-3 min-h-0 overflow-hidden">
         {next && (
           <>
             <div className="text-center text-[10px] uppercase tracking-widest opacity-60 fade-up">
               {roundName(roundSize)} · matchup {decided + 1} / {totalMatchups}
             </div>
-            <div className="flex-1 flex flex-col gap-3 min-h-0">
+            <div className="flex flex-col gap-2.5">
               <MobilePickButton
                 key={`a-${next.a.seed}`}
                 song={next.a}
@@ -346,9 +350,10 @@ function MobilePickButton({ song, onPick }: { song: Song; onPick: () => void }) 
   return (
     <button
       onClick={onPick}
-      className="card clickable card-enter rounded-2xl border-2 border-black flex-1 min-h-0 flex items-center justify-center px-6 text-center"
+      className="card clickable card-enter rounded-2xl border-2 border-black flex items-center justify-center px-5 text-center"
+      style={{ height: "min(32vh, 240px)" }}
     >
-      <span className="text-lg leading-tight">{song.title}</span>
+      <span className="text-base leading-snug">{song.title}</span>
     </button>
   );
 }
