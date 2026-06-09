@@ -165,7 +165,7 @@ function Landing({ onPick }: { onPick: (name: string) => void }) {
           ))}
         </div>
       </div>
-      <footer className="absolute bottom-4 left-0 right-0 text-center text-xs text-black">
+      <footer className="mt-10 mb-6 md:mt-0 md:mb-0 md:absolute md:bottom-4 md:left-0 md:right-0 text-center text-xs text-black">
         Built by{" "}
         <a
           href="https://aminjeddi.com/"
