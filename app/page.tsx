@@ -164,17 +164,20 @@ function clearAncestors(rounds: Slot[][], level: number, idx: number) {
 /* ---------- Landing ---------- */
 
 function Landing({ onPick }: { onPick: (name: string) => void }) {
+  const sortedArtists = [...ARTISTS].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+  );
   return (
     <div className="flex-1 flex flex-col px-5 pt-10 pb-6">
       <div className="flex-1 flex items-center justify-center w-full">
-        <div className="w-full max-w-3xl space-y-10 text-center blur-in">
+        <div className="w-full max-w-6xl space-y-8 text-center blur-in">
           <h1 className="text-2xl tracking-tight">songbrackets.xyz</h1>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-2.5">
-            {ARTISTS.map((a) => (
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 md:gap-2.5">
+            {sortedArtists.map((a) => (
               <button
                 key={a.name}
                 onClick={() => onPick(a.name)}
-                className="card clickable rounded-xl border-2 border-black px-3 py-3 text-sm leading-tight"
+                className="card clickable rounded-xl border-2 border-black px-2.5 py-2 text-xs sm:text-sm leading-tight"
               >
                 {a.name}
               </button>
