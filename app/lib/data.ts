@@ -2971,7 +2971,7 @@ export const ARTISTS: { name: ArtistKey; songs: string[] }[] = [
       "Worth the Wait",
       "Ridin Round",
       "Coming Home",
-      "Stay High",
+      "la luz",
       "Heaven Is a Home",
       "Muñekita",
     ],
