@@ -67,7 +67,7 @@ export const ARTISTS: { name: ArtistKey; songs: string[] }[] = [
       "Robocop",
       "Amazing",
       "Paranoid",
-      "Coldest Winter",
+      "Hold My Liquor",
     ],
   },
   {
